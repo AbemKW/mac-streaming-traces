@@ -69,6 +69,63 @@ bash scripts/eval.sh
 ## Results
 Results will be saved in a folder named `outputs/`. 
 
+## Token-Level Streaming Instrumentation (Fork Feature)
+
+This fork (`mac-streaming-traces`) adds transparent token-level timing capture without changing MAC's behavior. This enables downstream systems to replay realistic token-by-token timing.
+
+### What It Captures
+
+- Per-turn timing (start, end, duration in milliseconds)
+- Per-token emission timestamps
+- Agent attribution for each LLM turn
+- Sequential token ordering
+
+### What It Does NOT Do
+
+- Does not change MAC semantics, speaker selection, or termination logic
+- Does not compute metrics (CTU, etc.) - that's for downstream systems
+- Does not include any experiment-specific logic
+
+### Usage
+
+Instrumentation is automatically active when running `main.py` or `main_ws.py`.
+
+**Programmatic access (for downstream systems):**
+```python
+from instrumentation import get_trace_collector
+traces = get_trace_collector().get_all_turns()
+```
+
+**Optional file output:**
+```bash
+python main.py --trace_output traces.json
+```
+
+### Trace Data Structure
+
+Each turn trace contains:
+```json
+{
+  "turn_id": 1,
+  "agent_id": "Doctor0",
+  "content": "Based on the symptoms...",
+  "t_start_ms": 1703347200000,
+  "t_end_ms": 1703347205000,
+  "duration_ms": 5000,
+  "token_emissions": [
+    {"token": "Based", "t_emitted_ms": 1703347200100, "seq": 0},
+    {"token": " on", "t_emitted_ms": 1703347200150, "seq": 1}
+  ]
+}
+```
+
+### Validation
+
+Run the instrumentation tests:
+```bash
+python test_instrumentation.py
+```
+
 ## Contributing
 
 We welcome contributions to this project. If you have suggestions for improvements or want to report issues, please feel free to open an issue or submit a pull request.

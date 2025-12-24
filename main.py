@@ -1,12 +1,25 @@
-import os
+"""
+MAC (Multi-Agent Conversation) for Disease Diagnosis
 
+This file has been instrumented to capture token-level streaming timing
+without changing MAC's behavior. See instrumentation/ for details.
+"""
+import os
 import time
 import json
 import argparse
-
 import os.path as osp
+
 from tqdm import tqdm
 
+# =============================================================================
+# CRITICAL: Instrumentation must be installed BEFORE importing autogen.
+# This patches openai.OpenAI to capture token-level timing transparently.
+# =============================================================================
+from instrumentation import install_instrumentation, get_trace_collector
+install_instrumentation()
+
+# Now safe to import autogen - it will use our instrumented OpenAI client
 from autogen import (
     GroupChat,
     UserProxyAgent,
@@ -16,6 +29,7 @@ from autogen import (
 )
 
 from utils import *
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Medagents Setting")
@@ -61,6 +75,14 @@ def parse_args():
     )
     parser.add_argument("--num_doctors", type=int, default=3, help="number of experts")
     parser.add_argument("--n_round", type=int, default=13, help="attempt_vote")
+    
+    # Instrumentation options (optional, disabled by default)
+    parser.add_argument(
+        "--trace_output",
+        type=str,
+        default=None,
+        help="Path to write token timing traces (JSON). If not specified, traces are only available programmatically.",
+    )
 
     args = parser.parse_args()
 
@@ -196,6 +218,22 @@ def process_single_case(args, dataset, idx, output_dir, model_config):
         json.dump(case_info, file, indent=4)
 
 
+def save_traces(trace_output_path: str) -> None:
+    """
+    Save collected token timing traces to a JSON file.
+    
+    Args:
+        trace_output_path: Path to write the traces
+    """
+    collector = get_trace_collector()
+    traces = collector.get_all_turns_as_dicts()
+    
+    with open(trace_output_path, "w") as f:
+        json.dump(traces, f, indent=2)
+    
+    print(f"Saved {len(traces)} turn traces to {trace_output_path}")
+
+
 def main():
     args = parse_args()
 
@@ -219,6 +257,9 @@ def main():
     data_len = len(dataset)
 
     output_dir = args.output_dir
+    
+    # Clear any previous traces before starting
+    get_trace_collector().clear()
 
     for idx in tqdm(range(data_len)):
         try:
@@ -226,8 +267,11 @@ def main():
         except Exception as e:
             print(f"Failed to process case {idx} after all attempts: {str(e)}")
             continue
+    
+    # Save traces if output path was specified
+    if args.trace_output:
+        save_traces(args.trace_output)
 
 
 if __name__ == "__main__":
     main()
-
